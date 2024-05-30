@@ -28,7 +28,7 @@ function isDirectory(node: cheerio.Cheerio, item: Bookmark | Directory): item is
   return node.is("H3") || node.children("A").length > 0 || item.type === "directory";
 }
 
-function processNode($: cheerio.Root, element: cheerio.Cheerio): any {
+function processNode($: cheerio.Root, element: cheerio.Cheerio): Entries {
   let result: (Bookmark | Directory)[] = [];
 
   element.children("DT").each((_, elem) => {
@@ -64,7 +64,7 @@ function processNode($: cheerio.Root, element: cheerio.Cheerio): any {
 }
 
 function removeDirectoryfromBookmarks(nodes: Entries, dirToRemove: string): Entries {
-  const cp = [...nodes];
+  const cp = structuredClone(nodes);
   return cp.filter((node) => {
     if (node.type === "directory") {
       if (node.title === dirToRemove) {
@@ -77,7 +77,7 @@ function removeDirectoryfromBookmarks(nodes: Entries, dirToRemove: string): Entr
   });
 }
 
-function convertBookmarksToJSON(inputPath: string): any {
+function convertBookmarksToJSON(inputPath: string): Entries {
   const rawBookmarks = fs.readFileSync(inputPath, "utf8");
 
   const $ = cheerio.load(rawBookmarks);
@@ -88,7 +88,7 @@ function convertBookmarksToJSON(inputPath: string): any {
   return bookmarksJSON;
 }
 
-function writeJson(bookmarksJSON: any, outputPath: string) {
+function writeJson(bookmarksJSON: any, outputPath: string): void {
   fs.writeFile(outputPath, JSON.stringify(bookmarksJSON, null, 2), (err) => {
     if (err) {
       console.error("Error writing file:", err);
