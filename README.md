@@ -1,4 +1,3 @@
 # BookMarker
 
-My Bookmarks from Google Chrome, and tiny scripts to manage and publish them
-
+Tiny scripts to manage and publish my Google Chrome bookmarks
