@@ -1,10 +1,7 @@
 import * as fs from "fs";
 import * as cheerio from "cheerio";
 
-const inputFile: string = "imports/bookmarks_2024_05_31.html"; // 入力HTMLファイルのパス
-const outputFile: string = "exports/bookmarks_2024_05_31.json"; // 出力JSONファイルのパス
-
-type Entries = (Bookmark | Directory)[];
+type Entries = (Bookmark | Folder)[];
 interface Bookmark {
   type: "bookmark";
   title: string;
@@ -13,27 +10,27 @@ interface Bookmark {
   lastModified: string | null;
   icon: string | null;
 }
-interface Directory {
-  type: "directory";
+interface Folder {
+  type: "folder";
   title: string;
   addDate: string | null;
   lastModified: string | null;
-  children: (Bookmark | Directory)[];
+  contents: (Bookmark | Folder)[];
 }
 
-function isBookmark(node: cheerio.Cheerio, item: Bookmark | Directory): item is Bookmark {
+function isBookmark(node: cheerio.Cheerio, item: Bookmark | Folder): item is Bookmark {
   return node.is("A") || item.type === "bookmark";
 }
-function isDirectory(node: cheerio.Cheerio, item: Bookmark | Directory): item is Directory {
-  return node.is("H3") || node.children("A").length > 0 || item.type === "directory";
+function isFolder(node: cheerio.Cheerio, item: Bookmark | Folder): item is Folder {
+  return node.is("H3") || node.children("A").length > 0 || item.type === "folder";
 }
 
-function processNode($: cheerio.Root, element: cheerio.Cheerio): Entries {
-  let result: (Bookmark | Directory)[] = [];
+function parseNode($: cheerio.Root, element: cheerio.Cheerio): Entries {
+  let result: (Bookmark | Folder)[] = [];
 
   element.children("DT").each((_, elem) => {
     const node = $(elem);
-    const item = {} as Bookmark | Directory;
+    const item = {} as Bookmark | Folder;
     const titleElement = node.find("> A, > H3").first();
 
     if (isBookmark(titleElement, item)) {
@@ -43,16 +40,16 @@ function processNode($: cheerio.Root, element: cheerio.Cheerio): Entries {
       item.addDate = titleElement.attr("add_date") || null;
       item.lastModified = titleElement.attr("last_modified") || null;
       item.icon = titleElement.attr("icon") || null;
-    } else if (isDirectory(titleElement, item)) {
-      item.type = "directory";
+    } else if (isFolder(titleElement, item)) {
+      item.type = "folder";
       item.title = titleElement.text();
       item.addDate = titleElement.attr("add_date") || null;
       item.lastModified = titleElement.attr("last_modified") || null;
     }
 
     const nextDl = node.children("DL");
-    if (isDirectory(titleElement, item)) {
-      item.children = processNode($, nextDl);
+    if (isFolder(titleElement, item)) {
+      item.contents = parseNode($, nextDl);
     }
 
     if (Object.keys(item).length !== 0) {
@@ -63,17 +60,33 @@ function processNode($: cheerio.Root, element: cheerio.Cheerio): Entries {
   return result;
 }
 
-function removeDirectoryfromBookmarks(nodes: Entries, dirToRemove: string): Entries {
+function removeFolderFromJSON(nodes: Entries, dirsToRemove: string[]): Entries {
   const cp = structuredClone(nodes);
   return cp.filter((node) => {
-    if (node.type === "directory") {
-      if (node.title === dirToRemove) {
+    if (node.type === "folder") {
+      if (dirsToRemove.includes(node.title)) {
         return false;
       } else {
-        node.children = removeDirectoryfromBookmarks(node.children, dirToRemove);
+        node.contents = removeFolderFromJSON(node.contents, dirsToRemove);
+        return node.contents.length > 0;
       }
     }
     return true;
+  });
+}
+
+function pickUpFolderFromJSON(nodes: Entries, dirsToPickUp: string[]): Entries {
+  const cp = structuredClone(nodes);
+  return cp.filter((node) => {
+    if (node.type === "folder") {
+      if (dirsToPickUp.includes(node.title)) {
+        return true;
+      } else {
+        node.contents = pickUpFolderFromJSON(node.contents, dirsToPickUp);
+        return node.contents.length > 0;
+      }
+    }
+    return false;
   });
 }
 
@@ -83,25 +96,33 @@ function convertBookmarksToJSON(inputPath: string): Entries {
   const $ = cheerio.load(rawBookmarks);
   const rootDl = $("DL").first();
 
-  const bookmarksJSON = processNode($, rootDl);
+  const bookmarksJSON = parseNode($, rootDl);
 
   return bookmarksJSON;
 }
 
-function writeJson(bookmarksJSON: any, outputPath: string): void {
+function writeJson(bookmarksJSON: Entries, outputPath: string): void {
   fs.writeFile(outputPath, JSON.stringify(bookmarksJSON, null, 2), (err) => {
     if (err) {
       console.error("Error writing file:", err);
     } else {
-      console.log("Bookmarks converted to JSON successfully!");
+      console.log(`Bookmarks converted to JSON successfully!: ${outputPath}`);
     }
   });
 }
 
 try {
+  const inputFile: string = "./imports/bookmarks_2024_05_31.html"; // HTML file to be converted
+  const outputFile: string = "./exports/bookmarks_2024_05_31.json"; // JSON file to be created
+
   const bookmarkJson = convertBookmarksToJSON(inputFile);
-  const editedBookmark = removeDirectoryfromBookmarks(bookmarkJson, "accounts");
+
+  const editedBookmark = removeFolderFromJSON(bookmarkJson, ["accounts"]);
   writeJson(editedBookmark, outputFile);
+
+  const pickedUpBookmark = pickUpFolderFromJSON(bookmarkJson, ["accounts"]);
+  writeJson(pickedUpBookmark, "./exports/pickedUpBookmark.json");
+
   console.log("Bookmark JSON has been successfully created.");
 } catch (error) {
   console.error("Error processing the file:", error);
