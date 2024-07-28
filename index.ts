@@ -111,17 +111,30 @@ function writeJson(bookmarksJSON: Entries, outputPath: string): void {
   });
 }
 
+function grepUrls(bookmarksJSON: Entries): Set<string> {
+  const result = new Set<string>();
+  bookmarksJSON.forEach((node) => {
+    if (node.type === "bookmark") {
+      result.add(node.url);
+    } else if (node.type === "folder") {
+      const urls = grepUrls(node.contents);
+      urls.forEach((url) => result.add(url));
+    }
+  });
+  return result;
+}
+
 try {
-  const inputFile: string = "./imports/bookmarks_2024_05_31.html"; // HTML file to be converted
-  const outputFile: string = "./exports/bookmarks_2024_05_31.json"; // JSON file to be created
+  const inputFile: string = "./imports/bookmarks_2024_07_28.html"; // HTML file to be converted
+  const outputFile: string = "./exports/bookmarks_2024_07_28.json"; // JSON file to be created
 
   const bookmarkJson = convertBookmarksToJSON(inputFile);
 
   const editedBookmark = removeFolderFromJSON(bookmarkJson, ["accounts"]);
   writeJson(editedBookmark, outputFile);
 
-  const pickedUpBookmark = pickUpFolderFromJSON(bookmarkJson, ["accounts"]);
-  writeJson(pickedUpBookmark, "./exports/pickedUpBookmark.json");
+  const urlList = grepUrls(editedBookmark);
+  fs.writeFileSync("./exports/urls.txt", Array.from(urlList).join("\n"));
 
   console.log("Bookmark JSON has been successfully created.");
 } catch (error) {
